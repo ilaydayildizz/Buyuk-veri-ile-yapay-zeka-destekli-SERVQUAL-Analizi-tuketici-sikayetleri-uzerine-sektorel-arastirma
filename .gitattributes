@@ -1,0 +1,2 @@
+sikayetler_arsiv.json filter=lfs diff=lfs merge=lfs -text
+sikayetler_arsiv.jsonl filter=lfs diff=lfs merge=lfs -text
