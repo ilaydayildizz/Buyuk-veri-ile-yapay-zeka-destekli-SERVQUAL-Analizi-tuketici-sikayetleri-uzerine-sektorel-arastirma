@@ -1,101 +1,28 @@
-version: "3.8"
-
 services:
-  zookeeper:
-    image: wurstmeister/zookeeper:latest
-    container_name: zookeeper
-    ports:
-      - "2181:2181"
-    environment:
-      # Veri dizinini manuel tanımlayarak karmaşayı önleyelim
-      ZOO_DATA_DIR: /data
-      ZOO_DATA_LOG_DIR: /datalog
-    networks:
-      - spark-net
-
-  kafka:
-    image: wurstmeister/kafka:latest
-    container_name: kafka
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka:9093,OUTSIDE://192.168.56.11:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
-      KAFKA_LISTENERS: INSIDE://0.0.0.0:9093,OUTSIDE://0.0.0.0:9092
-      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_CREATE_TOPICS: "sikayetler:1:1"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - zookeeper
-    networks:
-      - spark-net
-
-  spark-master:
-    image: apache/spark:3.5.1
-    container_name: spark-master
-    # Başına /opt/spark/ ekledik
-    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
-    ports:
-      - "8080:8080"
-      - "7077:7077"
-    volumes:
-      - ./spark_kafka_to_mongo.py:/opt/spark/work-dir/spark_kafka_to_mongo.py
-    networks:
-      - spark-net
-
-  spark-worker:
-    image: apache/spark:3.5.1
-    container_name: spark-worker
-    # Başına /opt/spark/ ekledik ve master adresini kontrol ettik
-    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
-    depends_on:
-      - spark-master
-    networks:
-      - spark-net
-
-  mongodb:
-    image: mongo:7
-    container_name: mongodb
-    ports:
-      - "27017:27017"
-    networks:
-      - spark-net
-
-  namenode:
-    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    container_name: namenode
-    environment:
-      - CLUSTER_NAME=test
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
-      - HDFS_CONF_dfs_namenode_datanode_registration_ip_hostname_check=false
-      - HDFS_CONF_dfs_datanode_use_datanode_hostname=true
-    ports:
-      - "9870:9870"
-      - "8020:8020"
-    volumes:
-      - hadoop_namenode:/hadoop/dfs/name
-    networks:
-      - spark-net
-
-  datanode:
+  datanode-worker:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    container_name: datanode_master
+    container_name: datanode_worker
+    network_mode: "host"
     environment:
       - CLUSTER_NAME=test
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:8020
-    depends_on:
-      - namenode
+      - CORE_CONF_fs_defaultFS=hdfs://192.168.56.11:8020
+      - HDFS_CONF_dfs_datanode_hostname=worker-vm-2
+      - HDFS_CONF_dfs_datanode_use_datanode_hostname=true
+      - HDFS_CONF_dfs_namenode_datanode_registration_ip_hostname_check=false
     volumes:
-      - hadoop_datanode:/hadoop/dfs/data
-    networks:
-      - spark-net
+      - hadoop_worker_data:/hadoop/dfs/data
+    restart: always
 
-networks:
-  spark-net:
-    driver: bridge
+  spark-worker-remote:
+    image: apache/spark:3.5.1
+    container_name: spark_worker_remote
+    network_mode: "host"
+    environment:
+      - SPARK_MASTER=spark://192.168.56.11:7077
+      - SPARK_LOCAL_IP=192.168.56.12
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://192.168.56.11:7077
+    restart: always
 
+# BURASI ÇOK ÖNEMLİ: Aşağıdaki tanım yukarıdakiyle birebir aynı olmalı
 volumes:
-  hadoop_namenode:
-  hadoop_datanode:
+  hadoop_worker_data:
